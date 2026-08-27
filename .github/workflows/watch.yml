@@ -1,0 +1,26 @@
+name: flight-watch
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+    inputs:
+      push_test:
+        description: "send a test push instead of checking"
+        required: false
+        default: "no"
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: check flights
+        env:
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+        run: |
+          if [ "${{ github.event.inputs.push_test }}" = "yes" ]; then
+            python3 check.py --push-test
+          else
+            python3 check.py
+          fi
