@@ -15,6 +15,12 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
+      - name: restore notify state
+        uses: actions/cache/restore@v4
+        with:
+          path: state.json
+          key: notify-state-${{ github.run_id }}
+          restore-keys: notify-state-
       - name: check flights
         env:
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
@@ -24,3 +30,9 @@ jobs:
           else
             python3 check.py
           fi
+      - name: save notify state
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: state.json
+          key: notify-state-${{ github.run_id }}

@@ -6,23 +6,34 @@ import os
 import sys
 import urllib.request
 
-DEP = "CJU"
-ARR = "GMP"
 ADULT = 2
 FARE_TYPE = "YC"
-# (date YYYYMMDD, departure time from HHMM, to HHMM)
+# (departure airport, arrival airport, date YYYYMMDD, dep time from HHMM, to HHMM)
 TARGETS = [
-    ("20260926", "1600", "2359"),  # Sat after 16:00
-    ("20260927", "0000", "0959"),  # Sun before 10:00
+    ("GMP", "CJU", "20260923", "2000", "2359"),  # Wed after 20:00
+    ("GMP", "CJU", "20260924", "0000", "1259"),  # Thu before 13:00
+    ("CJU", "GMP", "20260926", "1600", "2359"),  # Sat after 16:00
+    ("CJU", "GMP", "20260927", "0000", "0959"),  # Sun before 10:00
 ]
 MAX_PRICE = 0  # per-adult total fare cap in KRW; 0 = no cap
 
 NTFY_TOPIC = os.environ.get("NTFY_TOPIC", "")
+STATE_FILE = "state.json"      # persisted between runs via actions/cache
+RENOTIFY_MINUTES = 60          # re-push interval while seats stay available
+AIRPORT_KR = {"GMP": "김포", "CJU": "제주"}
+DAY_KR = ["월", "화", "수", "목", "금", "토", "일"]
 
 
-def book_url(date):
+def book_url(dep, arr, date):
     return (f"https://flight.naver.com/flights/domestic/"
-            f"{DEP}:airport-{ARR}:airport-{date}?adult={ADULT}&fareType={FARE_TYPE}")
+            f"{dep}:airport-{arr}:airport-{date}?adult={ADULT}&fareType={FARE_TYPE}")
+
+
+def day_label(date):
+    try:
+        return DAY_KR[datetime.datetime.strptime(date, "%Y%m%d").weekday()]
+    except ValueError:
+        return ""
 
 
 def kst_today():
@@ -30,15 +41,15 @@ def kst_today():
             + datetime.timedelta(hours=9)).strftime("%Y%m%d")
 
 
-def search_flights(date):
+def search_flights(dep, arr, date):
     body = json.dumps({
         "type": "domestic",
         "person": {"adult": ADULT, "child": 0, "infant": 0},
         "fareType": FARE_TYPE,
         "tripType": "OW",
         "itineraries": [{
-            "departureAirport": DEP,
-            "arrivalAirport": ARR,
+            "departureAirport": dep,
+            "arrivalAirport": arr,
             "departureDate": date,
         }],
         "device": "PC",
@@ -87,22 +98,22 @@ def lowest_fare(f):
 def summarize(found):
     rows = []
     best = None
-    for date, f in found:
+    for dep, arr, date, f in found:
         iid = f.get("itineraryId", "")
         t = dep_time(f)
         airline_flight = iid[18:] if len(iid) > 18 else "?"
         low = lowest_fare(f)
         if low is not None and (best is None or low < best):
             best = low
-        rows.append((date, t, airline_flight, low, f.get("seatCount")))
+        rows.append((date, t, dep, arr, airline_flight, low, f.get("seatCount")))
     rows.sort()
     lines = []
-    for date, t, af, low, seat in rows[:8]:
-        day = "토" if date == "20260926" else "일" if date == "20260927" else ""
+    for date, t, dep, arr, af, low, seat in rows[:8]:
+        route = f"{AIRPORT_KR.get(dep, dep)}→{AIRPORT_KR.get(arr, arr)}"
         price_str = f"{low:,}원" if low else "가격미상"
         seat_str = f" 잔여{seat}석" if seat else ""
-        lines.append(f"{date[4:6]}/{date[6:]}({day}) {t[:2]}:{t[2:]} {af} "
-                     f"{price_str}{seat_str}")
+        lines.append(f"{date[4:6]}/{date[6:]}({day_label(date)}) {t[:2]}:{t[2:]} "
+                     f"{route} {af} {price_str}{seat_str}")
     if len(rows) > 8:
         lines.append(f"... 외 {len(rows) - 8}편")
     return "\n".join(lines), best
@@ -127,36 +138,63 @@ def push(title, message, click_url):
 
 
 def main():
-    if kst_today() > TARGETS[-1][0]:
+    today = kst_today()
+    active = [t for t in TARGETS if t[2] >= today]
+    if not active:
         print("all departure dates passed; nothing to do")
         return
     if "--push-test" in sys.argv:
         push("[클라우드 테스트] 항공권 감시",
-             "GitHub Actions에서 보낸 테스트 푸시입니다.", book_url(TARGETS[0][0]))
+             "GitHub Actions에서 보낸 테스트 푸시입니다.",
+             book_url(*active[0][:3]))
         print("test push sent")
         return
 
     found = []
-    for date, t_from, t_to in TARGETS:
-        flights = search_flights(date)
+    for dep, arr, date, t_from, t_to in active:
+        flights = search_flights(dep, arr, date)
         matched = [f for f in flights if t_from <= dep_time(f) <= t_to]
         if MAX_PRICE:
             matched = [f for f in matched
                        if (lowest_fare(f) or 10 ** 9) <= MAX_PRICE]
-        print(f"{date} {DEP}->{ARR} {t_from}-{t_to}: "
+        print(f"{date} {dep}->{arr} {t_from}-{t_to}: "
               f"{len(flights)} total, {len(matched)} matched")
-        found.extend((date, f) for f in matched)
+        found.extend((dep, arr, date, f) for f in matched)
+
+    state = {}
+    try:
+        with open(STATE_FILE, encoding="utf-8") as fh:
+            state = json.load(fh)
+    except Exception:
+        pass
 
     if not found:
         print("no matching seats")
+        with open(STATE_FILE, "w", encoding="utf-8") as fh:
+            json.dump({"available": False}, fh)
         return
+
     summary, best = summarize(found)
     best_str = f" 최저 {best:,}원/인" if best else ""
     print(f"MATCH! {len(found)} flights{best_str}")
     print(summary)
-    push(f"✈ 항공권 발견! 제주→김포 (토16시↑/일10시↓){best_str}",
+
+    now = datetime.datetime.now(datetime.timezone.utc)
+    if state.get("available") and state.get("last_notified"):
+        try:
+            elapsed = (now - datetime.datetime.fromisoformat(
+                state["last_notified"])).total_seconds()
+            if elapsed < RENOTIFY_MINUTES * 60:
+                print(f"suppressed (notified {int(elapsed // 60)}m ago)")
+                return
+        except ValueError:
+            pass
+
+    with open(STATE_FILE, "w", encoding="utf-8") as fh:
+        json.dump({"available": True, "last_notified": now.isoformat()}, fh)
+    push(f"✈ 항공권 발견! 제주 여행 조건 맞는 표{best_str}",
          summary + "\n\n알림을 누르면 예매 페이지로 이동",
-         book_url(found[0][0]))
+         book_url(*found[0][:3]))
 
 
 if __name__ == "__main__":
