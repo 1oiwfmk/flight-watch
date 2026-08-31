@@ -6,7 +6,7 @@ import os
 import sys
 import urllib.request
 
-ADULT = 2
+ADULT = 3
 FARE_TYPE = "YC"
 # (departure airport, arrival airport, date YYYYMMDD, dep time from HHMM, to HHMM)
 TARGETS = [
