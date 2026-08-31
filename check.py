@@ -11,7 +11,7 @@ FARE_TYPE = "YC"
 # (departure airport, arrival airport, date YYYYMMDD, dep time from HHMM, to HHMM)
 TARGETS = [
     ("GMP", "CJU", "20260923", "2000", "2359"),  # Wed after 20:00
-    ("GMP", "CJU", "20260924", "0700", "1259"),  # Thu 07:00-13:00
+    ("GMP", "CJU", "20260924", "0000", "1259"),  # Thu before 13:00
     ("CJU", "GMP", "20260926", "1600", "2359"),  # Sat after 16:00
     ("CJU", "GMP", "20260927", "0000", "0959"),  # Sun before 10:00
 ]
