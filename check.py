@@ -13,7 +13,7 @@ FARE_TYPE = "YC"
 TARGETS = [
     ("GMP", "CJU", "20260924", "0000", "2359"),  # Thu all day
     ("CJU", "GMP", "20260926", "1600", "2359"),  # Sat after 16:00
-    ("CJU", "GMP", "20260927", "0000", "0959"),  # Sun before 10:00
+    ("CJU", "GMP", "20260927", "0000", "1129"),  # Sun before 11:30
 ]
 MAX_PRICE = 0  # per-adult total fare cap in KRW; 0 = no cap
 
