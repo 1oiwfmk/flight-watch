@@ -7,7 +7,6 @@ import sys
 import urllib.request
 
 PARTY = 3            # travel party size (booking link)
-SEARCH_ADULT = 1     # search as 1 adult so 1-2 seat flights are visible
 FARE_TYPE = "YC"
 # (departure airport, arrival airport, date YYYYMMDD, dep time from HHMM, to HHMM)
 TARGETS = [
@@ -45,10 +44,19 @@ def kst_today():
             + datetime.timedelta(hours=9)).strftime("%Y%m%d")
 
 
+def search_variant():
+    """Rotate adult/infant combos so each run hits a different Naver
+    cache key (~15 min TTL) and triggers a fresh search more often.
+    Adults 1-2 only: flights with >=2 seats stay visible in every combo."""
+    slot = (datetime.datetime.now(datetime.timezone.utc).minute // 2) % 4
+    return [(1, 0), (1, 1), (2, 0), (2, 1)][slot]
+
+
 def search_flights(dep, arr, date):
+    adult, infant = search_variant()
     body = json.dumps({
         "type": "domestic",
-        "person": {"adult": SEARCH_ADULT, "child": 0, "infant": 0},
+        "person": {"adult": adult, "child": 0, "infant": infant},
         "fareType": FARE_TYPE,
         "tripType": "OW",
         "itineraries": [{
