@@ -6,7 +6,8 @@ import os
 import sys
 import urllib.request
 
-ADULT = 3
+PARTY = 3            # travel party size (booking link)
+SEARCH_ADULT = 1     # search as 1 adult so 1-2 seat flights are visible
 FARE_TYPE = "YC"
 # (departure airport, arrival airport, date YYYYMMDD, dep time from HHMM, to HHMM)
 TARGETS = [
@@ -24,9 +25,13 @@ AIRPORT_KR = {"GMP": "김포", "CJU": "제주"}
 DAY_KR = ["월", "화", "수", "목", "금", "토", "일"]
 
 
-def book_url(dep, arr, date):
+def book_url(dep, arr, date, adult=PARTY):
     return (f"https://flight.naver.com/flights/domestic/"
-            f"{dep}:airport-{arr}:airport-{date}?adult={ADULT}&fareType={FARE_TYPE}")
+            f"{dep}:airport-{arr}:airport-{date}?adult={adult}&fareType={FARE_TYPE}")
+
+
+def seat_count(f):
+    return f.get("seatCount")
 
 
 def day_label(date):
@@ -44,7 +49,7 @@ def kst_today():
 def search_flights(dep, arr, date):
     body = json.dumps({
         "type": "domestic",
-        "person": {"adult": ADULT, "child": 0, "infant": 0},
+        "person": {"adult": SEARCH_ADULT, "child": 0, "infant": 0},
         "fareType": FARE_TYPE,
         "tripType": "OW",
         "itineraries": [{
@@ -168,15 +173,21 @@ def main():
     except Exception:
         pass
 
-    if not found:
-        print("no matching seats")
+    # alert only when some flight has >=2 seats (or unknown seat count);
+    # 1-seat flights stay in the summary as +1 split-booking candidates
+    trigger = [x for x in found
+               if seat_count(x[3]) is None or seat_count(x[3]) >= 2]
+    if not trigger:
+        print("no matching seats (>=2)")
         with open(STATE_FILE, "w", encoding="utf-8") as fh:
             json.dump({"available": False}, fh)
         return
 
+    three_ok = any(seat_count(x[3]) is None or seat_count(x[3]) >= PARTY
+                   for x in found)
     summary, best = summarize(found)
     best_str = f" 최저 {best:,}원/인" if best else ""
-    print(f"MATCH! {len(found)} flights{best_str}")
+    print(f"MATCH! {len(trigger)} flights{best_str}")
     print(summary)
 
     now = datetime.datetime.now(datetime.timezone.utc)
@@ -192,9 +203,10 @@ def main():
 
     with open(STATE_FILE, "w", encoding="utf-8") as fh:
         json.dump({"available": True, "last_notified": now.isoformat()}, fh)
-    push(f"✈ 항공권 발견! 제주 여행 조건 맞는 표{best_str}",
+    kind = " — 3인 한번에 가능!" if three_ok else " — 2석 발견(분할예매 검토)"
+    push(f"✈ 항공권 발견!{kind}{best_str}",
          summary + "\n\n알림을 누르면 예매 페이지로 이동",
-         book_url(*found[0][:3]))
+         book_url(*trigger[0][:3], PARTY if three_ok else 2))
 
 
 if __name__ == "__main__":
