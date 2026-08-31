@@ -11,8 +11,7 @@ SEARCH_ADULT = 1     # search as 1 adult so 1-2 seat flights are visible
 FARE_TYPE = "YC"
 # (departure airport, arrival airport, date YYYYMMDD, dep time from HHMM, to HHMM)
 TARGETS = [
-    ("GMP", "CJU", "20260923", "2000", "2359"),  # Wed after 20:00
-    ("GMP", "CJU", "20260924", "0000", "1359"),  # Thu before 14:00
+    ("GMP", "CJU", "20260924", "0000", "2359"),  # Thu all day
     ("CJU", "GMP", "20260926", "1600", "2359"),  # Sat after 16:00
     ("CJU", "GMP", "20260927", "0000", "0959"),  # Sun before 10:00
 ]
