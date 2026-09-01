@@ -6,7 +6,7 @@ import os
 import sys
 import urllib.request
 
-PARTY = 3            # travel party size (booking link)
+PARTY = 2            # travel party size (booking link)
 FARE_TYPE = "YC"
 # (departure airport, arrival airport, date YYYYMMDD, dep time from HHMM, to HHMM)
 TARGETS = [
@@ -210,7 +210,8 @@ def main():
 
     with open(STATE_FILE, "w", encoding="utf-8") as fh:
         json.dump({"available": True, "last_notified": now.isoformat()}, fh)
-    kind = " — 3인 한번에 가능!" if three_ok else " — 2석 발견(분할예매 검토)"
+    kind = (f" — {PARTY}인 한번에 가능!" if three_ok
+            else " — 분할예매 검토 필요")
     push(f"✈ 항공권 발견!{kind}{best_str}",
          summary + "\n\n알림을 누르면 예매 페이지로 이동",
          book_url(*trigger[0][:3], PARTY if three_ok else 2))
